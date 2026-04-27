@@ -1,3 +1,15 @@
+/**
+ * PaymentUI.java
+ * Displays the payment interface for the Flight Management System.
+ * Handles user input for selecting a payment method and entering
+ * payment details. Passes all payment information to the
+ * PaymentController for processing.
+ *
+ * Author: Muhammad Moosa Khalid
+ * Date: 04/25/2026
+ * Course: CS 3321 - Software Engineering
+ */
+
 package com.flightmanagement.views;
 
 import com.flightmanagement.controllers.PaymentController;

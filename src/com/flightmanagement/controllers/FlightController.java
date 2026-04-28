@@ -1,8 +1,8 @@
 /**
- * SearchController.java
- * Handles all flight search operations in the Flight Management System.
- * Responsible for validating IATA codes, searching for available flights,
- * and filtering/sorting results based on customer preferences.
+ * FlightController.java
+ * Handles all flight management operations in the Flight Management System.
+ * Responsible for adding, updating, and removing flight listings.
+ * Only accessible by authenticated airline staff members.
  *
  * Author: Kibru Menore
  * Date: 04/23/2026
@@ -12,141 +12,142 @@
 package com.flightmanagement.controllers;
 
 import com.flightmanagement.data.DataStore;
-import com.flightmanagement.models.Airport;
 import com.flightmanagement.models.Flight;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
-public class SearchController {
+public class FlightController {
 
-    private String searchCriteria;
-    private List<Flight> searchResults;
+    private Flight selectedFlight;
+    private String updateStatus;
 
-    // Default constructor initializes empty search results
-    public SearchController() {
-        this.searchResults = new ArrayList<>();
-    }
+    // Default constructor
+    public FlightController() {}
 
     /**
-     * Searches for available flights between two airports on a given date.
-     * Validates both IATA codes before searching the DataStore.
-     * Returns a list of matching flights or empty list if none found.
+     * Adds a new flight listing to the DataStore.
+     * Called by airline staff when creating a new flight route.
+     * Returns true if flight was added successfully.
      */
-    public List<Flight> searchFlights(String departureCode, String arrivalCode,
-                                      String date, int passengerCount) {
-        searchResults = new ArrayList<>();
+    public boolean addFlight(String flightID, String airlineName,
+                             String departureDateTime, String arrivalDateTime,
+                             String duration, int numberOfStops, String ticketClass,
+                             String ticketClassCode, int seatCapacity, double fare,
+                             String airlineType, String departureAirportCode,
+                             String arrivalAirportCode) {
 
-        // validate both airport codes before searching
-        if (!validateLocation(departureCode)) {
-            System.out.println("Invalid departure airport code: " + departureCode);
-            return searchResults;
-        }
-        if (!validateLocation(arrivalCode)) {
-            System.out.println("Invalid arrival airport code: " + arrivalCode);
-            return searchResults;
+        // check if a flight with this ID already exists
+        if (DataStore.findFlightByID(flightID) != null) {
+            System.out.println("Flight with ID " + flightID + " already exists.");
+            return false;
         }
 
-        // search DataStore for flights matching the route
-        List<Flight> matches = DataStore.searchFlights(departureCode, arrivalCode);
-
-        // filter out flights that don't have enough seats
-        for (Flight flight : matches) {
-            if (flight.isAvailable(passengerCount)) {
-                searchResults.add(flight);
-            }
+        // validate that both airport codes exist in the system
+        if (DataStore.findAirportByCode(departureAirportCode) == null) {
+            System.out.println("Invalid departure airport code: " + departureAirportCode);
+            return false;
+        }
+        if (DataStore.findAirportByCode(arrivalAirportCode) == null) {
+            System.out.println("Invalid arrival airport code: " + arrivalAirportCode);
+            return false;
         }
 
-        if (searchResults.isEmpty()) {
-            System.out.println("No flights found from " + departureCode +
-                               " to " + arrivalCode + " on " + date);
-        } else {
-            System.out.println(searchResults.size() + " flight(s) found.");
+        // create and save the new flight
+        Flight newFlight = new Flight(flightID, airlineName, departureDateTime,
+                                      arrivalDateTime, duration, numberOfStops,
+                                      ticketClass, ticketClassCode, seatCapacity,
+                                      fare, airlineType, departureAirportCode,
+                                      arrivalAirportCode);
+        DataStore.addFlight(newFlight);
+        this.updateStatus = "ADDED";
+        System.out.println("Flight " + flightID + " added successfully.");
+        return true;
+    }
+
+    /**
+     * Updates the fare of an existing flight.
+     * Called by airline staff when adjusting ticket prices.
+     */
+    public boolean updateFlightFare(String flightID, double newFare) {
+        Flight flight = DataStore.findFlightByID(flightID);
+
+        if (flight == null) {
+            System.out.println("Flight " + flightID + " not found.");
+            return false;
         }
 
-        return searchResults;
+        // update the fare and record the change
+        double oldFare = flight.getFare();
+        flight.setFare(newFare);
+        this.selectedFlight = flight;
+        this.updateStatus = "UPDATED";
+        System.out.println("Flight " + flightID + " fare updated from $" +
+                           oldFare + " to $" + newFare);
+        return true;
     }
 
     /**
-     * Validates that the given IATA code exists in the DataStore.
-     * Returns true if the airport is found, false otherwise.
+     * Updates the seat capacity of an existing flight.
+     * Called by airline staff when adjusting available seats.
      */
-    public boolean validateLocation(String iataCode) {
-        Airport airport = DataStore.findAirportByCode(iataCode);
-        return airport != null;
-    }
+    public boolean updateFlightCapacity(String flightID, int newCapacity) {
+        Flight flight = DataStore.findFlightByID(flightID);
 
-    /**
-     * Filters the current search results by airline type.
-     * Type can be "LCC" for low cost or "FSA" for full service.
-     */
-    public List<Flight> filterByAirlineType(String airlineType) {
-        List<Flight> filtered = new ArrayList<>();
-        for (Flight flight : searchResults) {
-            if (flight.getAirlineType().equalsIgnoreCase(airlineType)) {
-                filtered.add(flight);
-            }
+        if (flight == null) {
+            System.out.println("Flight " + flightID + " not found.");
+            return false;
         }
-        return filtered;
+
+        flight.setSeatCapacity(newCapacity);
+        flight.setAvailableSeats(newCapacity);
+        this.selectedFlight = flight;
+        this.updateStatus = "UPDATED";
+        System.out.println("Flight " + flightID + " capacity updated to " + newCapacity);
+        return true;
     }
 
     /**
-     * Filters the current search results by ticket class.
-     * Class can be "Economy", "Business", or "First".
+     * Removes a flight listing from the DataStore.
+     * Called by airline staff when cancelling a flight route.
      */
-    public List<Flight> filterByTicketClass(String ticketClass) {
-        List<Flight> filtered = new ArrayList<>();
-        for (Flight flight : searchResults) {
-            if (flight.getTicketClass().equalsIgnoreCase(ticketClass)) {
-                filtered.add(flight);
-            }
+    public boolean removeFlight(String flightID) {
+        Flight flight = DataStore.findFlightByID(flightID);
+
+        if (flight == null) {
+            System.out.println("Flight " + flightID + " not found.");
+            return false;
         }
-        return filtered;
+
+        DataStore.removeFlight(flight);
+        this.updateStatus = "REMOVED";
+        System.out.println("Flight " + flightID + " removed successfully.");
+        return true;
     }
 
     /**
-     * Sorts the current search results by price from lowest to highest.
-     * Returns the sorted list of flights.
+     * Displays all flights currently stored in the DataStore.
+     * Used by airline staff to view all available flight listings.
      */
-    public List<Flight> sortByPrice() {
-        List<Flight> sorted = new ArrayList<>(searchResults);
-        sorted.sort(Comparator.comparingDouble(Flight::getFare));
-        System.out.println("Flights sorted by price (lowest to highest).");
-        return sorted;
-    }
+    public void displayAllFlights() {
+        List<Flight> flights = DataStore.getFlights();
 
-    /**
-     * Sorts the current search results by duration from shortest to longest.
-     * Returns the sorted list of flights.
-     */
-    public List<Flight> sortByDuration() {
-        List<Flight> sorted = new ArrayList<>(searchResults);
-        sorted.sort(Comparator.comparing(Flight::getDuration));
-        System.out.println("Flights sorted by duration (shortest to longest).");
-        return sorted;
-    }
-
-    /**
-     * Displays all flights in the given list in a formatted layout.
-     * Used to print search results to the console.
-     */
-    public void displayFlights(List<Flight> flights) {
         if (flights.isEmpty()) {
-            System.out.println("No flights to display.");
+            System.out.println("No flights currently in the system.");
             return;
         }
-        System.out.println("\n========== FLIGHT RESULTS ==========");
+
+        System.out.println("\n========== ALL FLIGHTS ==========");
         for (int i = 0; i < flights.size(); i++) {
             System.out.println((i + 1) + ". " + flights.get(i).getFlightDetails());
         }
-        System.out.println("=====================================\n");
+        System.out.println("==================================\n");
     }
 
     // Getters
-    public String getSearchCriteria() { return searchCriteria; }
-    public List<Flight> getSearchResults() { return searchResults; }
+    public Flight getSelectedFlight() { return selectedFlight; }
+    public String getUpdateStatus() { return updateStatus; }
 
     // Setters
-    public void setSearchCriteria(String searchCriteria) { this.searchCriteria = searchCriteria; }
+    public void setSelectedFlight(Flight selectedFlight) { this.selectedFlight = selectedFlight; }
+    public void setUpdateStatus(String updateStatus) { this.updateStatus = updateStatus; }
 }
